@@ -30,3 +30,4 @@ bin/
 .DS_Store
 
 *.hprof*.hprof
+/java_pid66250.hprof
