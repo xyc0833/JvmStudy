@@ -1,15 +1,19 @@
-import java.lang.ref.SoftReference;
-import java.lang.ref.WeakReference;
+
 
 public class Main {
-    public static void main(String[] args) {
-        SoftReference<Object> softReference = new SoftReference<>(new Object());
-        WeakReference<Object> weakReference = new WeakReference<>(new Object());
+    //volatile关键字
+    //JMM会把该线程本地内存中的变量强制刷新到主内存中去，并且这个写会操作会导致其他线程中的volatile变量缓存无效
+    private static volatile int a=0;
+    public static void main(String[] args) throws InterruptedException{
 
-        //手动GC
-        System.gc();
+        new Thread(()->{
+            while(a == 0){
+                System.out.println("线程结束");
+            }
+        }).start();
+        Thread.sleep(1000);
+        System.out.println("正在修改a的值");
+        a = 1;
 
-        System.out.println("软引用对象："+softReference.get());
-        System.out.println("弱引用对象："+weakReference.get());
     }
 }
