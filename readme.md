@@ -333,10 +333,14 @@ new Thread(action).start();
 ## 介绍一下 condition
 
 
-你想了解的 `Condition` 是 Java JUC 包中与显式锁（`Lock`）配合使用的**线程等待/通知机制**，可以理解为 `synchronized` 搭配 `wait()`/`notify()` 的“升级版”，我会从「是什么、怎么用、核心优势、实战例子」四个维度帮你讲清楚，结合你之前学的 `ReentrantLock` 更容易理解。
+你想了解的 `Condition` 是 Java JUC 包中与显式锁（`Lock`）配合使用的**线程等待/通知机制**，可以理解为 `synchronized` 
+搭配 `wait()`/`notify()` 的“升级版”，
+我会从「是什么、怎么用、核心优势、实战例子」四个维度帮你讲清楚，结合你之前学的 `ReentrantLock` 更容易理解。
 
 ### 先明确核心定义
-`Condition`（条件对象）是 `java.util.concurrent.locks` 包下的接口，必须通过 `Lock` 对象的 `newCondition()` 方法创建，核心作用是：**让线程在满足特定条件时等待，当条件满足时被唤醒**。
+`Condition`（条件对象）是 `java.util.concurrent.locks` 包下的接口，
+必须通过 `Lock` 对象的 `newCondition()` 方法创建，
+核心作用是：**让线程在满足特定条件时等待，当条件满足时被唤醒**。
 
 简单类比：
 - `synchronized` + `wait()`/`notify()` = 老式的“单条件等待通知”；
@@ -474,3 +478,90 @@ public class ConditionDemo {
 4. 典型场景：生产者-消费者、线程池任务等待等需要精准控制线程等待/唤醒的场景。
 
 简单记：`Condition` 就是给 `Lock` 锁配的“精准唤醒开关”，一个锁可以配多个开关，想唤醒哪类线程就开哪个开关。
+
+
+
+## ReentrantLock
+
+```java
+public static void main(String[] args) throws InterruptedException {
+    // 1. 创建一个ReentrantLock实例（只有这一把锁，所有线程竞争的都是这把锁）
+    ReentrantLock lock = new ReentrantLock();
+    
+    // 2. 主线程（main线程）获取这把锁，且后续没有释放！
+    lock.lock();
+    
+    // 3. 创建两个子线程t1、t2，线程的任务就是调用lock.lock()（尝试获取这把锁）
+    // 这里用了方法引用：lock::lock 等价于 () -> { lock.lock(); }
+    Thread t1 = new Thread(lock::lock), t2 = new Thread(lock::lock);
+    
+    // 4. 启动两个子线程，它们会立刻尝试获取锁，但此时锁被主线程持有，获取失败
+    t1.start();
+    t2.start();
+    
+    // 5. 主线程休眠1秒，确保t1、t2有足够时间尝试获取锁并进入等待队列
+    TimeUnit.SECONDS.sleep(1);
+    
+    // 6. 打印等待队列相关信息
+    // 6.1 获取等待该锁释放的线程数量（预期是2，因为t1、t2都在等）
+    System.out.println("当前等待锁释放的线程数："+lock.getQueueLength());
+    // 6.2 检查t1是否在等待队列中（预期true）
+    System.out.println("线程1是否在等待队列中："+lock.hasQueuedThread(t1));
+    // 6.3 检查t2是否在等待队列中（预期true）
+    System.out.println("线程2是否在等待队列中："+lock.hasQueuedThread(t2));
+    // 6.4 检查主线程自己是否在等待队列中（预期false，因为主线程正持有锁，不需要等）
+    System.out.println("当前线程是否在等待队列中："+lock.hasQueuedThread(Thread.currentThread()));
+}
+
+```
+
+## 公平锁 非公平锁
+
+公平锁：多个线程按照申请锁的顺序去获得锁，线程会直接进入队列去排队，永远都是队列的第一位才能得到锁。
+非公平锁：多个线程去获取锁的时候，会直接去尝试获取，获取不到，再去进入等待队列，如果能获取到，就直接获取到锁。
+
+
+## Runnable的介绍
+
+一、Runnable 的核心作用
+Runnable 是 Java 中一个函数式接口（只有一个抽象方法 run()），它的核心作用是封装要在新线程中执行的任务逻辑。
+简单来说：
+你把需要异步执行的代码写在 Runnable 的 run() 方法里，这个接口就像一个 “任务模板”，只定义 “要做什么”，但不关心 “谁来执行、怎么执行”。
+它解耦了 “任务逻辑” 和 “线程本身的生命周期管理”（比如线程启动、暂停、终止），符合面向对象的 “单一职责原则”。
+
+
+二、Runnable 和 Thread 的关系
+Thread 是 Java 中线程的具体实现类，负责管理线程的生命周期（启动、运行、终止等）；Runnable 是任务的抽象，负责定义线程要执行的内容。二者是 “执行者” 和 “任务” 的关系，具体可以拆解为：
+1. 本质关系：Thread 依赖 Runnable 提供执行逻辑
+   Thread 类本身也实现了 Runnable 接口（public class Thread implements Runnable），它的 run() 方法逻辑如下：
+
+
+Thread 是线程的 “容器”，Runnable 是线程要执行的 “内容”。
+
+
+3. 为什么优先用 Runnable？
+   避免单继承限制：Java 是单继承，继承 Thread 后就不能继承其他类，而实现 Runnable 还能继承其他类。
+   任务复用：一个 Runnable 实例可以交给多个 Thread 执行，比如：
+   java
+   运行
+   Runnable task = new MyTask();
+   // 多个线程执行同一个任务
+   new Thread(task, "线程1").start();
+   new Thread(task, "线程2").start();
+   适配线程池：Java 线程池（ExecutorService）只接收 Runnable/Callable 任务，不直接接收 Thread，这是实际开发中最常用的场景。
+   总结
+Runnable 的核心作用是封装异步执行的任务逻辑，只定义 “要做什么”，是任务的抽象；
+   Thread 是线程的具体实现，负责管理线程生命周期，是任务的 “执行者”；
+   
+**二者的核心关系是：Thread 通过调用 Runnable 的 run() 方法执行任务**
+实际开发中优先使用 Runnable（解耦、无单继承限制、适配线程池）。
+
+
+## 是只有一个抽象方法的情况下才可以简写为 lambda表达式吗？
+
+你问的是 “是不是只有一个抽象方法的接口才能简写为 Lambda 表达式”，这个理解基本正确，但需要补充一些关键细节来让你完全掌握这个知识点。
+一、核心结论：Lambda 表达式的核心前提
+Lambda 表达式在 Java 中是函数式接口的 “语法糖”（简化写法），而函数式接口的定义就是：只有一个抽象方法的接口（注意是 “抽象方法”，不是所有方法）。
+也就是说：
+✅ 能简写为 Lambda：只有当接口满足 “函数式接口” 条件（仅一个抽象方法）时，才能用 Lambda 表达式替代该接口的实现类。
+
